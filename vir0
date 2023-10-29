@@ -2,143 +2,82 @@
 #include <ESP32Servo.h>
 #include "BluetoothSerial.h"
 
-#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
-#endif
-
 BluetoothSerial SerialBT;
 
-//////////////////////////////////Motors pins/////////////////////////////////// 
-
-const int leftFront    = 25;
-const int leftBack     = 24;
-const int rightFront   = 23;
-const int rightBack    = 22;
-
-const int enableLeft   = 30;
-const int enableRight  = 21;
+// Motor pins
+const int leftFront = 25;
+const int leftBack = 24;
+const int rightFront = 23;
+const int rightBack = 22;
+const int enableLeft = 30;
+const int enableRight = 21;
 
 Servo gripper;
 Servo lift;
 int pos0 = 0;
-int pos1 = 0; 
+int pos1 = 0;
 
-//////////////////////////////////encoders pins///////////////////////////////////
+// Encoder pins
+const int encoderPinA = 34;
+const int encoderPinB = 35;
+volatile long encoder1Count = 0;
+volatile long encoder2Count = 0;
 
-const int encoderPinA      = 34;
-const int encoderPinB      = 35;
-
-volatile long encoder1Count= 0;
-volatile long encoder2Count= 0;
-
-long previousTime          = 0;
-float ePrevious            = 0;
-float eIntegral            = 0;
-
+long previousTime = 0;
+float ePrevious = 0;
+float eIntegral = 0;
 
 float kp = 2.0;
 float kd = 0.1;
 float ki = 0.01;
 
-void setup() { 
-
+void setup() {
   Serial.begin(115200);
-
   SerialBT.begin("med7at_03");
-  Serial.println("The device started, now you can pair it with bluetooth!");
+  Serial.println("The device started, now you can pair it with Bluetooth!");
 
-  pinMode(leftFront,  OUTPUT);
-  pinMode(leftBack,   OUTPUT);
+  pinMode(leftFront, OUTPUT);
+  pinMode(leftBack, OUTPUT);
   pinMode(enableLeft, OUTPUT);
-
   pinMode(rightFront, OUTPUT);
-  pinMode(rightBack,  OUTPUT);
-  pinMode(enableRight,OUTPUT);
+  pinMode(rightBack, OUTPUT);
+  pinMode(enableRight, OUTPUT);
 
   gripper.attach(32);
   lift.attach(33);
 
-  //////////////////////////////////encoder modes///////////////////////////////////
-
-  pinMode(encoderPinA,  INPUT);
-  pinMode(encoderPinB,  INPUT);
+  pinMode(encoderPinA, INPUT);
+  pinMode(encoderPinB, INPUT);
 
   attachInterrupt(digitalPinToInterrupt(encoderPinA), handleEncoder1, RISING);
   attachInterrupt(digitalPinToInterrupt(encoderPinB), handleEncoder2, RISING);
-
 }
 
 void loop() {
-
   int target = encoder1Count;
+  float u = pidController(target, kp, kd, ki);
 
-  float u = pidcontroller(target, kp, kd, ki);
-
-  if (SerialBT.available()){
+  if (SerialBT.available()) {
     char command = SerialBT.read();
-    switch(command)
-    {
-      case 'W':
-        movingForward();
-        break;
-
-      case 'S':
-        movingBackward();
-        break;
-
-      case 'D':
-        movingRight();
-        break;
-
-      case 'A':
-        movingLeft();
-        break;
-
-      case 'F':
-        noMovement();
-        break;
-
-
-      /*
-      case 'G':
-        gripping();
-        break;
-
-      case 'R':
-        releasing();
-        break;
-
-      case 'L':
-        lifting();
-        break;
-
-      case 'P':
-        putting();
-        break;
-      */
-    }
+    processBluetoothCommand(command);
   }
 }
 
-/////////////////////////////////////////   Encoders handling    /////////////////////////////////////////
-void handleEncoder1()
-{
-    encoder1Count++;
+// Encoder interrupt handlers
+void handleEncoder1() {
+  encoder1Count++;
 }
 
-void handleEncoder2()
-{
-    encoder2Count++;
+void handleEncoder2() {
+  encoder2Count++;
 }
 
-
-////////////////////////////////////////////      PID App    /////////////////////////////////////////////
-float pidcontroller(int target,float kp,float kd,float ki)
-{
+// PID controller
+float pidController(int target, float kp, float kd, float ki) {
   long currentTime = micros();
   float deltaT = ((float)(currentTime - previousTime)) / 1.0e6;
 
-  int e = encoder2Count - target;                                     //
+  int e = encoder2Count - target;
   float eDerivative = (e - ePrevious) / deltaT;
   eIntegral = eIntegral + e * deltaT;
 
@@ -149,7 +88,8 @@ float pidcontroller(int target,float kp,float kd,float ki)
 
   return u;
 }
-////////////////////////////////////////////      straight motion    /////////////////////////////////////////////
+
+// Motor control functions
 void moveMotor(int frontPin, int backPin, float u) {
   float speed = fabs(u);
   if (speed > 255) {
@@ -163,84 +103,108 @@ void moveMotor(int frontPin, int backPin, float u) {
   analogWrite(enableLeft, speed);
 }
 
-/////////////////////////////////////////      Robot movment    /////////////////////////////////////////
-void movingForward()
-{
+// Robot motion control
+void movingForward() {
   int target = encoder1Count;
-  float u = pidcontroller(target, kp, kd, ki);
+  float u = pidController(target, kp, kd, ki);
 
   moveMotor(leftFront, leftBack, u);
   moveMotor(rightFront, rightBack, u);
 }
 
-void movingBackward()
-{
+void movingBackward() {
   int target = encoder1Count;
-  float u = pidcontroller(target, kp, kd, ki);
+  float u = pidController(target, kp, kd, ki);
 
   moveMotor(leftFront, leftBack, -u);
   moveMotor(rightFront, rightBack, -u);
 }
 
-void movingLeft()
-{
+void movingLeft() {
   int target = encoder1Count;
-  float u = pidcontroller(target, kp, kd, ki);
+  float u = pidController(target, kp, kd, ki);
 
   moveMotor(leftFront, leftBack, -u);
   moveMotor(rightFront, rightBack, u);
 }
 
-void movingRight()
-{
+void movingRight() {
   int target = encoder1Count;
-  float u = pidcontroller(target, kp, kd, ki);
+  float u = pidController(target, kp, kd, ki);
 
   moveMotor(leftFront, leftBack, u);
   moveMotor(rightFront, rightBack, -u);
 }
 
-void noMovement()
-{
-  digitalWrite(leftFront,  LOW);
-  digitalWrite(leftBack,   LOW);
+void noMovement() {
+  digitalWrite(leftFront, LOW);
+  digitalWrite(leftBack, LOW);
   digitalWrite(rightFront, LOW);
-  digitalWrite(rightBack,  LOW);
+  digitalWrite(rightBack, LOW);
 }
 
-///////////////////////////////////////// Arm movement /////////////////////////////////////////
-/*void gripping()
-{
+// Process Bluetooth commands
+void processBluetoothCommand(char command) {
+  switch (command) {
+    case 'W':
+      movingForward();
+      break;
+    case 'S':
+      movingBackward();
+      break;
+    case 'D':
+      movingRight();
+      break;
+    case 'A':
+      movingLeft();
+      break;
+    case 'F':
+      noMovement();
+      break;
+
+    case 'G':
+      gripping();
+      break;
+
+     case 'R':
+      releasing();
+      break;
+
+    case 'L':
+      lifting();
+      break;
+
+    case 'P':
+      putting();
+      break;
+  }
+}
+
+// Arm movement functions
+void gripping() {
   pos0 = pos0 + 5;
-  if(pos0 >= 180)
-    {
-      pos0 = 180;
-    }
+  if (pos0 >= 180) {
+    pos0 = 180;
+  }
 }
 
-void releasing()
-{
+void releasing() {
   pos0 = pos0 - 5;
-  if(pos0 <= 0)
-    {
-      pos0 = 0;
-    }
+  if (pos0 <= 0) {
+    pos0 = 0;
+  }
 }
 
-void lifting()
-{
+void lifting() {
   pos1 = pos1 + 5;
-  if(pos1 >= 180)
-    {
-      pos1 = 180;
-    }
+  if (pos1 >= 180) {
+    pos1 = 180;
+  }
 }
 
-void putting()
-{
+void putting() {
   pos0 = pos0 - 5;
-  if(pos0 <= 0)
-    {
-      pos0 = 0;
-    }
-}*/
+  if (pos0 <= 0) {
+    pos0 = 0;
+  }
+}
