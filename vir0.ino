@@ -1,7 +1,7 @@
 
 #include <WiFi.h>
 #include <WebSocketsServer.h>
-#include <Servo.h>
+#include <ESP32Servo.h>
 
 // Motor pins
 const int leftFront = 19;
@@ -20,8 +20,12 @@ int Res = 8;
 
 Servo gripper;
 Servo lift;
+int gripperPin = 32;
+int liftPin = 33;
 int pos0 = 0;
 int pos1 = 0;
+bool gripperOpen = false;
+bool liftOpen = false;
 
 // Encoder pins
 const int encoderPinA = 34;
@@ -32,6 +36,17 @@ volatile long encoder2Count = 0;
 long previousTime = 0;
 float ePrevious = 0;
 float eIntegral = 0;
+
+volatile unsigned long prev_time = 0;
+double rotationsA = 0;
+double rotationsB = 0;
+double distanceA = 0;
+double distanceB = 0;
+double distance = 0, prev_distance = 0;
+volatile bool en1Flag;
+volatile bool en2Flag;
+
+volatile double x = 0, y = 0, angle = 0;
 
 float kp = 2.0;
 float kd = 2.0;
@@ -79,19 +94,12 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
       } else if (text == "A") {
         movingLeft();
       } else if (text == "G") {
-        gripping();
+        toggleGripper();
       } else if (text == "R") {
-        releasing();
-      } else if (text == "L") {
-        lifting();
-      } else if (text == "P") {
-        putting();
+        toggleLift();
       } else if (text == "F") {
         noMovement();
       }
-      
-
-
       break;
     // For anything else: do nothing
     case WStype_BIN:
@@ -128,9 +136,15 @@ void setup() {
   ledcSetup(channel2, freq, Res);
   ledcAttachPin(enableRight, channel2);
   ledcAttachPin(enableLeft, channel1);
-  
-  gripper.attach(32);
-  lift.attach(33);
+
+  ESP32PWM::allocateTimer(0);
+	ESP32PWM::allocateTimer(1);
+	ESP32PWM::allocateTimer(2);
+	ESP32PWM::allocateTimer(3);
+	gripper.setPeriodHertz(50);
+	gripper.attach(gripperPin, 500, 2400);
+  lift.setPeriodHertz(50);
+	lift.attach(liftPin, 500, 2400);
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
@@ -142,10 +156,53 @@ void setup() {
   webSocket.begin();
   webSocket.onEvent(onWebSocketEvent);
 }
+
 long last = 0;
+
 void loop() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
+
+  // put your main code here, to run repeatedly:
+  // Calculate speed
+  unsigned long currentT = millis();
+  unsigned long elapsedTime = currentT - prev_time;
+
+  if (elapsedTime >= 1000) {
+    // Calculate speed in revolutions per second
+    rotationsA += (double)encoder1Count / 18.0;
+    rotationsB += (double)encoder2Count / 18.0;
+
+    //speed = (float)(distance - prev_distance) / (float)elapsedTime * 1000.0;
+
+    // Reset pulse count and update last time
+    encoder1Count = 0;
+    encoder2Count = 0;
+    prev_time = currentT;
+  }
+
+  // Calculate distance
+  //18 slits
+  distanceA = (rotationsA * M_PI * 0.65);  // Assuming a wheel diameter of 65 mm
+  distanceB = (rotationsB * M_PI * 0.65);
+  distance = (distanceA + distanceB) / 2.00;
+
+  angle = angle + (distanceA - distanceB) / 19.4;
+  x = x + (distance - prev_distance) * cos(angle * M_PI / 180);
+  y = y + (distance - prev_distance) * sin(angle * M_PI / 180);
+
+  prev_distance = distance;
+
+  Serial.print("Distance: ");
+  Serial.print(distance);
+  Serial.println(" centimeters");
+  Serial.print("Cordinates,x= ");
+  Serial.println(x);
+  Serial.print("Cordinates,y= ");
+  Serial.println(y);
+
+  delay(500);  // Delay for stability
+
   webSocket.loop();
   if (millis() > last + 50)
   {
@@ -155,13 +212,21 @@ void loop() {
   }
 }
 
-
 void handleEncoder1() {
-  encoder1Count++;
+  if(en1Flag == 1){
+    encoder1Count++;
+  } else {
+    encoder1Count--;
+  }
+  Serial.println("inc");
 }
 
 void handleEncoder2() {
-  encoder2Count++;
+  if(en2Flag == 1){
+    encoder2Count++;
+  } else {
+    encoder2Count--;
+  }
 }
 
 // PID controller
@@ -192,7 +257,7 @@ void moveLeftMotor(int frontPin, int backPin, float u) {
 
   digitalWrite(frontPin, direction);
   digitalWrite(backPin, !direction);
-  ledcWrite(channel1, speed);
+  //ledcWrite(channel1, speed);
   Serial.println(u);
 }
 
@@ -206,7 +271,7 @@ void moveRightMotor(int frontPin, int backPin, float u) {
 
   digitalWrite(frontPin, direction);
   digitalWrite(backPin, !direction);
-  ledcWrite(channel2, speed);
+  //ledcWrite(channel2, speed);
   Serial.println(u);
 }
 
@@ -215,28 +280,49 @@ void moveRightMotor(int frontPin, int backPin, float u) {
 void movingForward() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
+  pinMode(enableRight, HIGH);
+  pinMode(enableLeft, HIGH);
+  en1Flag = 1;
+  en2Flag = 1;
 
-  moveLeftMotor(leftFront, leftBack, 255 + u);
-  moveRightMotor(rightFront, rightBack, 255 - u);
+  moveLeftMotor(leftFront, leftBack, u);
+  moveRightMotor(rightFront, rightBack, u);
 }
 
 void movingBackward() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
+  pinMode(enableRight, HIGH);
+  pinMode(enableLeft, HIGH);
+  en1Flag = 0;
+  en2Flag = 0;
 
-  moveLeftMotor(leftFront, leftBack, 255 - u);
-  moveRightMotor(rightFront, rightBack, 255 + u);
+  moveLeftMotor(leftFront, leftBack, -u);
+  moveRightMotor(rightFront, rightBack, -u);
 }
 
 void movingLeft() {
-  moveLeftMotor(leftFront, leftBack, 255);
-  moveRightMotor(rightFront, rightBack, 255);
+  int target = encoder1Count;
+  float u = pidController(target, kp, kd, ki);
+  pinMode(enableRight, HIGH);
+  pinMode(enableLeft, HIGH);
+  en1Flag = 1;
+  en2Flag = 0;
+
+  moveLeftMotor(leftFront, leftBack, -u);
+  moveRightMotor(rightFront, rightBack, u);
 }
 
 void movingRight() {
+  int target = encoder1Count;
+  float u = pidController(target, kp, kd, ki);
+  pinMode(enableRight, HIGH);
+  pinMode(enableLeft, HIGH);
+  en1Flag = 0;
+  en2Flag = 1;
 
-  moveLeftMotor(leftFront, leftBack, 255);
-  moveRightMotor(rightFront, rightBack, 255);
+  moveLeftMotor(leftFront, leftBack, u);
+  moveRightMotor(rightFront, rightBack, -u);
 }
 
 void noMovement() {
@@ -246,18 +332,26 @@ void noMovement() {
   digitalWrite(rightBack, LOW);
 }
 
-void gripping() {
-  gripper.write(50);
+// Function to toggle the gripper's open and closed state
+void toggleGripper() {
+  gripperOpen = !gripperOpen;
+  if (gripperOpen) {
+    gripper.write(50);
+    pos0 = 150;
+  } else {
+    gripper.write(0);
+    pos0 = 0;
+  }
 }
 
-void releasing() {
-  gripper.write(0);
-}
-
-void lifting() {
-  lift.write(50);
-}
-
-void putting() {
-  lift.write(0);
+// Function to toggle the lift's open and closed state
+void toggleLift() {
+  liftOpen = !liftOpen;
+  if (liftOpen) {
+    lift.write(150);
+    pos1 = 50;
+  } else {
+    lift.write(0);
+    pos1 = 0;
+  }
 }
