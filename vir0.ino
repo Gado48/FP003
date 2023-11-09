@@ -3,11 +3,15 @@
 #include <WebSocketsServer.h>
 #include <ESP32Servo.h>
 
+
+
 // Motor pins
 const int leftFront = 19;
 const int leftBack = 18;
 const int rightFront = 5;
 const int rightBack = 17;
+
+String str;
 
 const int enableLeft = 23;
 int channel1 = 0;
@@ -53,8 +57,8 @@ float kd = 2.0;
 float ki = 2.0;
 
 //network credentials
-const char* ssid = "gado";
-const char* password = "21010716*22";
+const char* ssid = "Mohamed";
+const char* password = "12345675";
 String text;
 //Global varialbe defined with port 80
 WebSocketsServer webSocket = WebSocketsServer(80);
@@ -75,16 +79,16 @@ void onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* payload, size_t lengt
         Serial.println(ip.toString());
       }
       break;
-    //Echo the text messages
-    
-    
+      //Echo the text messages
+
+
     case WStype_TEXT:
       //Serial.printf("[%u] Text %s\n", num, payload);
       text = String((char*)payload);
       Serial.print("this is the recieved text: ");
       Serial.println(text);
-      webSocket.broadcastTXT(payload);
-      
+      // webSocket.broadcastTXT(payload);
+
       if (text == "W") {
         movingForward();
       } else if (text == "S") {
@@ -138,13 +142,13 @@ void setup() {
   ledcAttachPin(enableLeft, channel1);
 
   ESP32PWM::allocateTimer(0);
-	ESP32PWM::allocateTimer(1);
-	ESP32PWM::allocateTimer(2);
-	ESP32PWM::allocateTimer(3);
-	gripper.setPeriodHertz(50);
-	gripper.attach(gripperPin, 500, 2400);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+  gripper.setPeriodHertz(50);
+  gripper.attach(gripperPin, 500, 2400);
   lift.setPeriodHertz(50);
-	lift.attach(liftPin, 500, 2400);
+  lift.attach(liftPin, 500, 2400);
 
   pinMode(encoderPinA, INPUT);
   pinMode(encoderPinB, INPUT);
@@ -201,19 +205,18 @@ void loop() {
   Serial.print("Cordinates,y= ");
   Serial.println(y);
 
-  delay(500);  // Delay for stability
-
   webSocket.loop();
-  if (millis() > last + 50)
-  {
-    webSocket.broadcastTXT("gadooooooo");
+  if (millis() > last + 50) {
+    str = String   (x) + "," + String(y);
+    webSocket.broadcastTXT(str);
     //Serial.println("gadoooooo");
     last = millis();
   }
 }
 
+
 void handleEncoder1() {
-  if(en1Flag == 1){
+  if (en1Flag == 1) {
     encoder1Count++;
   } else {
     encoder1Count--;
@@ -222,7 +225,7 @@ void handleEncoder1() {
 }
 
 void handleEncoder2() {
-  if(en2Flag == 1){
+  if (en2Flag == 1) {
     encoder2Count++;
   } else {
     encoder2Count--;
