@@ -3,8 +3,6 @@
 #include <WebSocketsServer.h>
 #include <ESP32Servo.h>
 
-
-
 // Motor pins
 const int leftFront = 19;
 const int leftBack = 18;
@@ -26,8 +24,8 @@ Servo gripper;
 Servo lift;
 int gripperPin = 32;
 int liftPin = 33;
-int pos0 = 0;
-int pos1 = 0;
+int pos0 = 10;
+int pos1 = 10;
 bool gripperOpen = false;
 bool liftOpen = false;
 
@@ -57,8 +55,8 @@ float kd = 2.0;
 float ki = 2.0;
 
 //network credentials
-const char* ssid = "Mohamed";
-const char* password = "12345675";
+const char* ssid = "gado";
+const char* password = "21010716*22";
 String text;
 //Global varialbe defined with port 80
 WebSocketsServer webSocket = WebSocketsServer(80);
@@ -196,7 +194,7 @@ void loop() {
   y = y + (distance - prev_distance) * sin(angle * M_PI / 180);
 
   prev_distance = distance;
-
+/*
   Serial.print("Distance: ");
   Serial.print(distance);
   Serial.println(" centimeters");
@@ -204,11 +202,11 @@ void loop() {
   Serial.println(x);
   Serial.print("Cordinates,y= ");
   Serial.println(y);
-
+*/
   webSocket.loop();
   if (millis() > last + 50) {
     str = String   (x) + "," + String(y);
-    webSocket.broadcastTXT(str);
+    webSocket.broadcastTXT(text);
     //Serial.println("gadoooooo");
     last = millis();
   }
@@ -221,7 +219,7 @@ void handleEncoder1() {
   } else {
     encoder1Count--;
   }
-  Serial.println("inc");
+  //Serial.println(encoder1Count);
 }
 
 void handleEncoder2() {
@@ -260,7 +258,7 @@ void moveLeftMotor(int frontPin, int backPin, float u) {
 
   digitalWrite(frontPin, direction);
   digitalWrite(backPin, !direction);
-  //ledcWrite(channel1, speed);
+  ledcWrite(channel1, speed);
   Serial.println(u);
 }
 
@@ -274,7 +272,7 @@ void moveRightMotor(int frontPin, int backPin, float u) {
 
   digitalWrite(frontPin, direction);
   digitalWrite(backPin, !direction);
-  //ledcWrite(channel2, speed);
+  ledcWrite(channel2, speed);
   Serial.println(u);
 }
 
@@ -283,49 +281,45 @@ void moveRightMotor(int frontPin, int backPin, float u) {
 void movingForward() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
-  pinMode(enableRight, HIGH);
-  pinMode(enableLeft, HIGH);
+  
   en1Flag = 1;
   en2Flag = 1;
 
-  moveLeftMotor(leftFront, leftBack, u);
-  moveRightMotor(rightFront, rightBack, u);
+  moveLeftMotor(leftFront, leftBack, 255);
+  moveRightMotor(rightFront, rightBack, 255);
 }
 
 void movingBackward() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
-  pinMode(enableRight, HIGH);
-  pinMode(enableLeft, HIGH);
+  
   en1Flag = 0;
   en2Flag = 0;
 
-  moveLeftMotor(leftFront, leftBack, -u);
-  moveRightMotor(rightFront, rightBack, -u);
+  moveLeftMotor(leftFront, leftBack, -255);
+  moveRightMotor(rightFront, rightBack, -255);
 }
 
 void movingLeft() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
-  pinMode(enableRight, HIGH);
-  pinMode(enableLeft, HIGH);
+ 
   en1Flag = 1;
   en2Flag = 0;
 
-  moveLeftMotor(leftFront, leftBack, -u);
-  moveRightMotor(rightFront, rightBack, u);
+  moveLeftMotor(leftFront, leftBack, -255);
+  moveRightMotor(rightFront, rightBack, 255);
 }
 
 void movingRight() {
   int target = encoder1Count;
   float u = pidController(target, kp, kd, ki);
-  pinMode(enableRight, HIGH);
-  pinMode(enableLeft, HIGH);
+  
   en1Flag = 0;
   en2Flag = 1;
 
-  moveLeftMotor(leftFront, leftBack, u);
-  moveRightMotor(rightFront, rightBack, -u);
+  moveLeftMotor(leftFront, leftBack, 255);
+  moveRightMotor(rightFront, rightBack, -255);
 }
 
 void noMovement() {
@@ -339,11 +333,18 @@ void noMovement() {
 void toggleGripper() {
   gripperOpen = !gripperOpen;
   if (gripperOpen) {
-    gripper.write(50);
-    pos0 = 150;
+    for (int angle=10;angle<=50;angle++){
+    gripper.write(angle);
+    delay(10);
+    }
+    
+    pos0 = 50;
   } else {
-    gripper.write(0);
-    pos0 = 0;
+    for (int angle=50;angle>=10;angle--){
+    gripper.write(angle);
+    delay(10);
+    }
+    pos0 = 10;
   }
 }
 
@@ -351,10 +352,16 @@ void toggleGripper() {
 void toggleLift() {
   liftOpen = !liftOpen;
   if (liftOpen) {
-    lift.write(150);
+    for (int angle=10;angle<=50;angle++){
+    lift.write(angle);
+    delay(10);
+    }
     pos1 = 50;
   } else {
-    lift.write(0);
-    pos1 = 0;
+    for (int angle=50;angle>=10;angle--){
+    lift.write(angle);
+    delay(10);
+    }
+    pos1 = 10;
   }
 }
